@@ -16,10 +16,7 @@ if ~exist('useCommonBadTrialsFlag','var'); useCommonBadTrialsFlag = 1;  end
 folderName = fullfile(folderSourceString,'data',subjectName,gridType,expDate,protocolName);
 
 % Get folders
-% folderImage = fullfile(folderSourceString, 'data/images/New_sets/T'); -
-% For image protocols, it is better to keep all images in the rawData as
-% well as data folders. I think we have dnoe it for other image protocols.
-
+folderImage = 'T';
 folderExtract = fullfile(folderName,'extractedData');
 folderSegment = fullfile(folderName,'segmentedData');
 folderLFP = fullfile(folderSegment,'LFP');
@@ -30,7 +27,7 @@ folderSpikes = fullfile(folderSegment,'Spikes');
 [neuralChannelsStored,SourceUnitIDs] = loadspikeInfo(folderSpikes);
 
 % Get Combinations
-[~,~,~,~,~,oValsUnique,~,~] = loadParameterCombinations(folderExtract,sideChoice);
+[~,~,~,~,fValsUnique,~,~,~] = loadParameterCombinations(folderExtract,sideChoice);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Display main options
@@ -39,14 +36,14 @@ fontSizeSmall = 10; fontSizeMedium = 12; fontSizeLarge = 16;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % UI
 aspectRatio = 16/9;
-UI.lr_margin = 2.5e-2;
-UI.ud_margin = 2.5e-2;
+UI.lr_margin = 1.25e-2;
+UI.ud_margin = UI.lr_margin*aspectRatio;
 UI.spacing = 1.25e-2;
 
 % Electrode Grid
 panel.grid.x = UI.lr_margin; 
-panel.grid.height = 0.4*(7/13); % Rescaling the V4/V1 grid height for V1|V4 rearrangement
-panel.grid.y = (1 - 2*UI.ud_margin) - panel.grid.height; 
+panel.grid.height = 0.34*(7/13); % Rescaling the V4/V1 grid height for V1|V4 rearrangement
+panel.grid.y = (1 - UI.ud_margin - UI.spacing*aspectRatio) - panel.grid.height; 
 panel.grid.width = panel.grid.height*(17/6)*(1/aspectRatio); % Rescaling the grid width for V1|V4 rearrangement, while keeping approx. square spacing according to the monitor's aspect ratio
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -169,7 +166,7 @@ hTimingPanel = uipanel('Title','Timing (Min,Max)',...
     'fontSize', fontSizeLarge,'Unit','Normalized','Position',timingPanelPos);
 
 % Signal Range
-signalRange = [-0.2 1];
+signalRange = [-0.7 2];
 uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
     'Position',[0 1-(dynamicHeight+dynamicGap)/2-titleGap/2 0.5 dynamicHeight/2], ...
     'Style','text','String','Signal Range (s)','HorizontalAlignment','left','FontSize',fontSizeSmall);
@@ -238,6 +235,15 @@ hZMax = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
     'Position',[0.75 1-6*(dynamicHeight+dynamicGap)/2-titleGap/2 0.25 dynamicHeight/2], ...
     'Style','edit','String','1','FontSize',fontSizeSmall);
 
+% Predictability Measure
+predTypeString = 'Predictability (P)|Compressibility (C)';
+uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
+    'Position',[0 1-7*(dynamicHeight+dynamicGap)/2-titleGap/2 0.5 dynamicHeight/2], ...
+    'Style','text','String','Predictability Measure','HorizontalAlignment','left','FontSize',fontSizeSmall);
+hPredType = uicontrol('Parent',hTimingPanel,'Unit','Normalized', ...
+    'Position',[0.5 1-7*(dynamicHeight+dynamicGap)/2-titleGap/2 0.5 dynamicHeight/2], ...
+    'Style','popup','String',predTypeString,'FontSize',fontSizeSmall);
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Get plots and message handles
 
@@ -246,19 +252,29 @@ electrodeGridPos = [panel.grid.x, panel.grid.y, panel.grid.width, panel.grid.hei
 hElectrodes = showElectrodeLocations(electrodeGridPos,analogChannelsStored(get(hAnalogChannel,'val')), ...
     colorNames(get(hChooseColor,'val')),[],1,0,gridType,subjectName,gridLayout);
 
+% Plot Tiles:
 gap = 2e-3;
-tile.x = UI.lr_margin; 
+tile.x = UI.lr_margin + (1-2*UI.lr_margin)*(1/17) + UI.spacing; % To accommodate example column on the left
 tile.y = UI.ud_margin;
-tile.width = 1-2*UI.lr_margin;
-tile.height = 0.55 + UI.ud_margin;
+tile.width = (1-2*UI.lr_margin)*(16/17) - UI.spacing; % To accommodate example column on the left
+tile.height = (1-2*UI.ud_margin)*(6/9)*(16/17); % (0.55 + UI.ud_margin)*(16/17); % To maintain roughly square tiling
 tilePos = [tile.x, tile.y, tile.width, tile.height];
 
 % Main plot handles
 numTypes = 6;
-numImages = (length(oValsUnique)/numTypes)/length(string(strsplit(stimTypeString, '|')));
+numImages = (length(fValsUnique)/numTypes)/length(string(strsplit(stimTypeString, '|')));
 numRows = numTypes; numCols = numImages;
 plotHandles = getPlotHandles(numRows,numCols,tilePos,gap);
 
+% Image Patches:
+hImagePatches = getPlotHandles(1, numImages, ...
+    [tile.x, tile.y + tile.height + UI.spacing*aspectRatio, tile.width, ((1-2*UI.ud_margin)/9)*(16/17)], gap);
+
+% Example Column (IN & OUT conditions for r = 1, 2, 4):
+hExample = getPlotHandles(numTypes, 1, ...
+    [UI.lr_margin, tile.y, ((1-2*UI.lr_margin)/16)*(16/17), tile.height], gap);
+
+% Title:
 uicontrol('Unit','Normalized','Position',[0 1-UI.ud_margin 1 UI.ud_margin],...
     'Style','text','String',[subjectName expDate protocolName],'FontSize',fontSizeMedium);
 
@@ -267,6 +283,11 @@ if isfile("cmap.mat"), colormap(load("cmap.mat").("icefire")), else colormap tur
 % functions
     function plotData_Callback(~,~)
 
+        stimType = string(strsplit(stimTypeString, '|'));
+        stimType =  stimType(get(hStimType,'val'));
+        fValsToUse = (1:16) + 16*(stimType == "Grayscale");
+        patchSizeDeg = 4;
+        colorName = colorNames(get(hChooseColor,'val'));
         analysisType = string(strsplit(analysisTypeString, '|'));
         analysisType = analysisType(get(hAnalysisType,'val'));
         plotColor = colorNames(get(hChooseColor,'val'));
@@ -318,7 +339,10 @@ if isfile("cmap.mat"), colormap(load("cmap.mat").("icefire")), else colormap tur
             
             rescaleZPlots(plotHandles,zRange);
         end
+
         showElectrodeLocations(electrodeGridPos,channelNumber,plotColor,hElectrodes,holdOnState,0,gridType,subjectName,gridLayout);
+
+        plotImageData(hImagePatches, folderImage, stimType, fValsToUse, patchSizeDeg, channelNumber, subjectName, colorName);
     end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     function rescaleZ_Callback(~,~)
@@ -391,16 +415,16 @@ if isfile("cmap.mat"), colormap(load("cmap.mat").("icefire")), else colormap tur
 
         function holdOnGivenPlotHandle(plotHandles,holdOnState)
             
-            [numRows,numCols] = size(plotHandles);
+            [nRows,nCols] = size(plotHandles);
             if holdOnState
-                for i=1:numRows
-                    for j=1:numCols
+                for i=1:nRows
+                    for j=1:nCols
                         set(plotHandles(i,j),'Nextplot','add');
                     end
                 end
             else
-                for i=1:numRows
-                    for j=1:numCols
+                for i=1:nRows
+                    for j=1:nCols
                         set(plotHandles(i,j),'Nextplot','replace');
                     end
                 end
@@ -411,13 +435,48 @@ if isfile("cmap.mat"), colormap(load("cmap.mat").("icefire")), else colormap tur
     function cla_Callback(~,~)
         
         claGivenPlotHandle(plotHandles);
-
+        claGivenPlotHandle(hImagePatches);
+        claGivenPlotHandle(hExample)
         function claGivenPlotHandle(plotHandles)
-            [numRows,numCols] = size(plotHandles);
-            for i=1:numRows
-                for j=1:numCols
+            [nRows,nCols] = size(plotHandles);
+            for i=1:nRows
+                for j=1:nCols
                     cla(plotHandles(i,j));
+                    title("",'Parent',plotHandles)
                 end
+            end
+        end
+    end
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    function plotImageData(hImagePatches, folderImage, stimType, fValsToUse, patchSizeDeg, channelNumber, subjectName, colorName)
+        plottingDetails.displayPlotsFlag=1;
+        predType = string(strsplit(predTypeString, '|'));
+        predType = char(predType(get(hPredType,'val')));
+        predFile = fullfile("savedData", lower(predType(1:(end-4))), strcat(subjectName, ".xlsx"));
+        P = readtable(predFile, Sheet=strcat(folderImage(end), '_', lower(stimType)), ReadRowNames=true, ReadVariableNames=true);
+        for i=1:numImages
+            imageFileName = fullfile(folderImage,['Image' num2str(fValsToUse(i)) '.tif']);
+            plottingDetails.hImagePatches=hImagePatches(i);
+            plottingDetails.colorNames=colorName;
+            [patchData,imageAxesDeg]=getImagePatches(imageFileName, channelNumber, subjectName, folderSourceString, patchSizeDeg, plottingDetails);
+            title(sprintf("%0.5g", P{i, sprintf("Elec%d", channelNumber)}),'Parent',hImagePatches(i))
+            if i > 1
+                set(hImagePatches(i),'XTicklabel', [], 'YTicklabel', []);
+            else
+                [X, Y] = meshgrid(imageAxesDeg.xAxisDeg, imageAxesDeg.yAxisDeg);
+                Y = flipud(Y); % Matrix to image convention
+                RF = ["IN", "OUT"];
+                r = [1, 2, 4];
+                circ = @(X, Y, h, k, r) (((X - h).^2 + (Y - k).^2) <= r^2); % Anon function for circular boundaries
+                stimTable = combinations(RF, r);
+                for j=1:numTypes
+                    inputImage = patchData{1};
+                    mask = repmat(circ(X, Y, 0, 0, stimTable{j, "r"}), 1, 1, 3);
+                    if stimTable{j, "RF"} == "IN", mask = ~mask; end
+                    inputImage(mask) = 128; % OUT/IN pixels set to gray
+                    image(imageAxesDeg.xAxisDeg,imageAxesDeg.yAxisDeg,inputImage,'Parent',hExample(j));
+                end
+                xlabel(hImagePatches(i), 'Degrees'); ylabel(hImagePatches(i), 'Degrees');
             end
         end
     end
@@ -489,8 +548,8 @@ stimType = string(strsplit(stimTypeString, '|'));
 for i=1:numRows
     for j=1:numCols
         clear goodPos
-        o = numRows*(j-1) + i + (numRows*numCols)*(stimType(get(hStimType,'val')) == "Grayscale");
-        goodPos = parameterCombinations{1,1,1,1,o,1,1};
+        f = numRows*(j-1) + i + (numRows*numCols)*(stimType(get(hStimType,'val')) == "Grayscale");
+        goodPos = parameterCombinations{1,1,1,f,1,1,1}; % MODIFIED parameterCombinations{1,1,1,1,o,1,1};
         goodPos = setdiff(goodPos,badTrials);
       
         if isempty(goodPos)
@@ -521,14 +580,17 @@ for i=1:numRows
                 fftST = abs(fft(analogData(goodPos,stPos),[],2));
 
                 if analysisType == "FFT"
-                    plot(plotHandles(i,j),xs,log10(mean(fftBL)),'g');
+                    plot(plotHandles(i,j),xs,log10(mean(fftBL)),'k');
                     set(plotHandles(i,j),'Nextplot','add');
-                    plot(plotHandles(i,j),xs,log10(mean(fftST)),'k');
+                    plot(plotHandles(i,j),xs,log10(mean(fftST)),'color',plotColor);
                     set(plotHandles(i,j),'Nextplot','replace');
                 end
 
                 if analysisType == "deltaFFT"
+                    plot(plotHandles(i,j),xs,zeros(1,length(xs)),'k')
+                    set(plotHandles(i,j),'Nextplot','add');
                     plot(plotHandles(i,j),xs,log10(mean(fftST))-log10(mean(fftBL)),'color',plotColor);
+                    set(plotHandles(i,j),'Nextplot','replace');
                 end
                 
             elseif analysisType == "FFT(ERP)" || analysisType == "deltaFFT(ERP)"
@@ -536,14 +598,17 @@ for i=1:numRows
                 fftERPST = abs(fft(mean(analogData(goodPos,stPos),1)));
                 
                 if analysisType == "FFT(ERP)"
-                    plot(plotHandles(i,j),xs,log10(fftERPBL),'g');
+                    plot(plotHandles(i,j),xs,log10(fftERPBL),'k');
                     set(plotHandles(i,j),'Nextplot','add');
-                    plot(plotHandles(i,j),xs,log10(fftERPST),'k');
+                    plot(plotHandles(i,j),xs,log10(fftERPST),'color',plotColor);
                     set(plotHandles(i,j),'Nextplot','replace');
                 end
                 
                 if analysisType == "deltaFFT(ERP)"
+                    plot(plotHandles(i,j),xs,zeros(1,length(xs)),'k')
+                    set(plotHandles(i,j),'Nextplot','add');
                     plot(plotHandles(i,j),xs,log10(fftERPST)-log10(fftERPBL),'color',plotColor);
+                    set(plotHandles(i,j),'Nextplot','replace');
                 end
             
             elseif analysisType == "TF" || analysisType == "deltaTF"  % TF analysis
@@ -596,8 +661,8 @@ stimType = string(strsplit(stimTypeString, '|'));
 for i=1:numRows
     for j=1:numCols
         clear goodPos
-        o = numRows*(j-1) + i + (numRows*numCols)*(stimType(get(hStimType,'val')) == "Grayscale");
-        goodPos = parameterCombinations{1,1,1,1,o,1,1};
+        f = numRows*(j-1) + i + (numRows*numCols)*(stimType(get(hStimType,'val')) == "Grayscale");
+        goodPos = parameterCombinations{1,1,1,f,1,1,1};
         goodPos = setdiff(goodPos,badTrials);
 
         if isempty(goodPos)
